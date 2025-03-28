@@ -160,7 +160,7 @@ services:
       - confluent
 
   spark-master:
-    image: bitnami/spark:latest
+    image: bitnami/spark:3.5.5
     command: bin/spark-class org.apache.spark.deploy.master.Master
     ports:
       - "9090:8080"
@@ -168,7 +168,7 @@ services:
     networks:
       - confluent
   spark-worker:
-    image: bitnami/spark:latest
+    image: bitnami/spark:3.5.5
     command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     depends_on:
       - spark-master
@@ -179,7 +179,18 @@ services:
       SPARK_MASTER_URL: spark://spark-master:7077
     networks:
       - confluent
-
+  spark-stream:
+    build:
+      context: .  
+      dockerfile: spark-stream.Dockerfile
+    depends_on:
+      - spark-master
+      - spark-worker
+    environment:
+      CASSANDRA_DB_HOST: cassandra_db
+      BROKER_URL: broker:29092
+    networks:
+      - confluent
   cassandra_db:
     image: cassandra:latest
     container_name: cassandra
