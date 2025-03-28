@@ -1,3 +1,4 @@
+import os
 import logging
 
 from cassandra.cluster import Cluster
@@ -18,7 +19,7 @@ def create_keyspace(session):
 def create_table(session):
     session.execute("""
     CREATE TABLE IF NOT EXISTS spark_streams.created_users (
-        id UUID PRIMARY KEY,
+        id uuid PRIMARY KEY,
         first_name TEXT,
         last_name TEXT,
         gender TEXT,
@@ -67,11 +68,17 @@ def create_spark_connection():
     s_conn = None
 
     try:
+        cassandra_host = os.getenv('CASSANDRA_DB_HOST')
+
+        if cassandra_host is None:
+            logging.error("CASSANDRA_DB_HOST environment variable is not set")
+            return None
+
         s_conn = SparkSession.builder \
             .appName('SparkDataStreaming') \
             .config('spark.jars.packages', "com.datastax.spark:spark-cassandra-connector_2.13:3.5.1,"
                                            "org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.1") \
-            .config('spark.cassandra.connection.host', 'localhost') \
+            .config('spark.cassandra.connection.host', cassandra_host) \
             .getOrCreate()
 
         s_conn.sparkContext.setLogLevel("ERROR")
@@ -81,39 +88,48 @@ def create_spark_connection():
 
     return s_conn
 
-
 def connect_to_kafka(spark_conn):
     spark_df = None
     try:
+        broker_url = os.getenv('BROKER_URL')
+
+        if broker_url is None:
+            logging.warning("BROKER_URL environment variable is not set")
+            return None
+        
         spark_df = spark_conn.readStream \
             .format('kafka') \
-            .option('kafka.bootstrap.servers', 'localhost:9092') \
+            .option('kafka.bootstrap.servers', broker_url) \
             .option('subscribe', 'usuarios') \
             .option('startingOffsets', 'earliest') \
             .load()
-        logging.info("kafka dataframe created successfully")
+
+        logging.info("Kafka dataframe created successfully")
     except Exception as e:
-        logging.warning(f"kafka dataframe could not be created because: {e}")
+        logging.warning(f"Kafka dataframe could not be created because: {e}")
 
     return spark_df
 
-
 def create_cassandra_connection():
     try:
-        # connecting to the cassandra cluster
-        cluster = Cluster(['localhost'])
+        cassandra_db_host = os.getenv('CASSANDRA_DB_HOST')
+
+        if cassandra_db_host is None:
+            logging.error("CASSANDRA_DB_HOST environment variable is not set")
+            return None
+
+        cluster = Cluster([cassandra_db_host])
 
         cas_session = cluster.connect()
 
         return cas_session
     except Exception as e:
-        logging.error(f"Could not create cassandra connection due to {e}")
+        logging.error(f"Could not create Cassandra connection due to {e}")
         return None
-
 
 def create_selection_df_from_kafka(spark_df):
     schema = StructType([
-        StructField("id", StringType(), False),
+        StructField("id", StringType(),False),
         StructField("first_name", StringType(), False),
         StructField("last_name", StringType(), False),
         StructField("gender", StringType(), False),
@@ -128,6 +144,9 @@ def create_selection_df_from_kafka(spark_df):
 
     sel = spark_df.selectExpr("CAST(value AS STRING)") \
         .select(from_json(col('value'), schema).alias('data')).select("data.*")
+    
+
+    sel = sel.filter(sel['id'].isNotNull())
     print(sel)
 
     return sel
