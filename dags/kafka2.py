@@ -20,7 +20,7 @@ def get_data2():
     
 def format_data2(res):
     data = {}
-    data['id'] = uuid.uuid4()
+    data['id'] = str(uuid.uuid4())
     data['gender'] = res.get("gender", '')  
     data['first_name'] = res.get('name', {}).get('first', '')
     data['last_name'] = res.get('name', {}).get('last', '')
@@ -63,7 +63,7 @@ with DAG(
     dag_id="usuarios_creados",
     default_args=default_arg,
     schedule= '@daily',
-    catchup=False) as dag:
+    catchup=True) as dag:
 
     #task1
     streaming_task=PythonOperator (
